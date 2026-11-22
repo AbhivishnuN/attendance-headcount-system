@@ -1,0 +1,4 @@
+employee_id,name,department,email,password
+TCH-001,Dr. Robert Oppenheimer,CSE,robert@college.edu,Teacher@123
+TCH-002,Prof. Katherine Johnson,CSE,katherine@college.edu,Teacher@123
+TCH-003,Dr. Richard Feynman,CSE,richard@college.edu,Teacher@123
