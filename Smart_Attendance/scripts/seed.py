@@ -175,11 +175,39 @@ def seed_students_from_csv(db, csv_path: str):
 
 def seed_subjects_and_timetable(db):
     print(" Seeding default subjects and timetable...")
+    # Default Classes (CSE A through CSE L)
+    default_classes = [
+        ("CSE A", "A"),
+        ("CSE B", "B"),
+        ("CSE C", "C"),
+        ("CSE D", "D"),
+        ("CSE E", "E"),
+        ("CSE F", "F"),
+        ("CSE G", "G"),
+        ("CSE H", "H"),
+        ("CSE I", "I"),
+        ("CSE J", "J"),
+        ("CSE K", "K"),
+        ("CSE L", "L"),
+    ]
+    for name, sec in default_classes:
+        c = db.query(Class).filter(Class.name == name).first()
+        if not c:
+            c = Class(name=name, department="CSE", semester=3, section=sec, is_active=True)
+            db.add(c)
+
     subjects_data = [
-        ("CS601", "Internet of Things & Embedded Systems", "CSE", 6),
-        ("CS602", "Artificial Intelligence & Computer Vision", "CSE", 6),
-        ("CS603", "Cloud Computing & Distributed Systems", "CSE", 6),
-        ("CS604", "Cyber Security & Cryptography", "CSE", 6),
+        ("1BITMA301", "Mathematics-III for IT Stream", "CSE", 3),
+        ("1BCSDS302", "Data Structures", "CSE", 3),
+        ("1BCSOS303", "Operating System", "CSE", 3),
+        ("1BCSCO304", "Computer Organization", "CSE", 3),
+        ("1BCSDL305", "Data Structures Laboratory", "CSE", 3),
+        ("1BCSEL306", "Embedded IoT Laboratory", "CSE", 3),
+        ("1BCSOO307", "Object Oriented Programming with Java", "CSE", 3),
+        ("1BUHVK308", "Universal Human Values", "CSE", 3),
+        ("MNC1BNSSK301 / 1BNCCK301 / 1BPHEK301", "NSS / NCC / Physical Education (PE)", "CSE", 3),
+        ("IBMADS301", "Additional Mathematics / Bridge Course", "CSE", 3),
+        ("YOGA", "Yoga", "CSE", 3),
     ]
 
     for code, name, dept, sem in subjects_data:

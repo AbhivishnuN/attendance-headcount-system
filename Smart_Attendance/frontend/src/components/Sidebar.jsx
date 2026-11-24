@@ -24,7 +24,7 @@ export default function Sidebar({
     { id: 'start_session', label: 'Start Attendance', icon: PlayCircle },
     { id: 'attendance_table', label: 'Student Attendance', icon: Users },
     { id: 'manual_attendance', label: 'Manual Attendance', icon: Edit3 },
-    { id: 'headcount', label: 'Headcount', icon: Camera },
+    { id: 'headcount', label: 'Camera & Headcount', icon: Camera },
     { id: 'verification', label: 'Verification History', icon: ShieldAlert },
     { id: 'reports', label: 'Reports', icon: FileText },
     { id: 'profile', label: 'Profile', icon: User },

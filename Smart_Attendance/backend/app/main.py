@@ -4,7 +4,7 @@ from app.database.session import Base, engine
 import app.models  # Ensures all models are registered
 
 # Import routers
-from app.routers import auth, student, teacher
+from app.routers import auth, student, teacher, camera
 
 # Create tables in the database automatically
 Base.metadata.create_all(bind=engine)
@@ -28,6 +28,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(student.router)
 app.include_router(teacher.router)
+app.include_router(camera.router)
 
 
 @app.get("/")

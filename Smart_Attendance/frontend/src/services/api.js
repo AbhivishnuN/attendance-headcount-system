@@ -87,4 +87,8 @@ export const teacherApi = {
   // Student issues (for teacher review)
   getAllIssues:   () => apiRequest('/teacher/issues'),
   resolveIssue:  (data) => apiRequest('/teacher/issues/resolve', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Camera API
+  getCameraStatus: () => apiRequest('/camera/status'),
+  captureCamera: (data) => apiRequest('/camera/capture', { method: 'POST', body: JSON.stringify(data) }),
 }

@@ -1,36 +1,44 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { AlertCircle } from 'lucide-react'
 
+/**
+ * ConfirmDialog — reusable modal dialog.
+ *
+ * Props:
+ *   title          : string
+ *   message        : string | ReactNode  — subtitle below title
+ *   children       : ReactNode          — extra form fields rendered inside the dialog
+ *   confirmLabel   : string             — confirm button text (default "Confirm")
+ *   cancelLabel    : string             — cancel button text (default "Cancel")
+ *   confirmDisabled: bool               — disable confirm button while submitting
+ *   isDanger       : bool               — red confirm button
+ *   onConfirm      : () => void
+ *   onCancel       : () => void
+ *
+ * Usage: render it only when you want it visible (no isOpen prop needed —
+ * just conditionally render the component).
+ */
 export default function ConfirmDialog({
-  isOpen,
   title = 'Confirm Action',
-  message = 'Are you sure you want to proceed?',
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
+  message = '',
+  children,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  confirmDisabled = false,
   isDanger = false,
-  requireReason = false,
-  reasonPlaceholder = 'Please enter justification reason...',
   onConfirm,
   onCancel,
 }) {
-  const [reason, setReason] = useState('')
-  const [error, setError] = useState('')
-
-  if (!isOpen) return null
-
-  const handleConfirm = () => {
-    if (requireReason && !reason.trim()) {
-      setError('A reason is mandatory for this action.')
-      return
-    }
-    setError('')
-    onConfirm(reason)
-    setReason('')
-  }
-
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content">
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        // Click outside closes dialog
+        if (e.target === e.currentTarget) onCancel && onCancel()
+      }}
+    >
+      <div className="modal-content" style={{ maxWidth: '480px', width: '100%' }}>
+        {/* Header */}
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
           <div
             style={{
@@ -47,50 +55,31 @@ export default function ConfirmDialog({
           >
             <AlertCircle size={22} />
           </div>
-          <div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              {title}
-            </h3>
-            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-              {message}
-            </p>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h3>
+            {message && (
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                {message}
+              </p>
+            )}
           </div>
         </div>
 
-        {requireReason && (
-          <div style={{ marginBottom: '1.25rem' }}>
-            <label className="form-label" style={{ marginBottom: '0.375rem', display: 'block' }}>
-              Reason <span style={{ color: 'var(--status-absent)' }}>*</span>
-            </label>
-            <textarea
-              className="form-input"
-              rows={3}
-              placeholder={reasonPlaceholder}
-              value={reason}
-              onChange={e => {
-                setReason(e.target.value)
-                if (error) setError('')
-              }}
-              style={{ resize: 'vertical' }}
-            />
-            {error && (
-              <span style={{ fontSize: '0.775rem', color: 'var(--status-absent)', marginTop: '0.25rem', display: 'block' }}>
-                {error}
-              </span>
-            )}
-          </div>
-        )}
+        {/* Extra form fields passed as children */}
+        {children && <div style={{ marginBottom: '1.25rem' }}>{children}</div>}
 
+        {/* Action buttons */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
           <button type="button" className="btn btn-secondary" onClick={onCancel}>
-            {cancelText}
+            {cancelLabel}
           </button>
           <button
             type="button"
             className={`btn ${isDanger ? 'btn-danger' : 'btn-primary'}`}
-            onClick={handleConfirm}
+            onClick={onConfirm}
+            disabled={confirmDisabled}
           >
-            {confirmText}
+            {confirmLabel}
           </button>
         </div>
       </div>

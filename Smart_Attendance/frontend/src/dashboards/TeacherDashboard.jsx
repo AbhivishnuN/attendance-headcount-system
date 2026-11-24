@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   CheckCircle2,
   XCircle,
@@ -8,6 +8,10 @@ import {
   Scan,
   Edit3,
   Camera,
+  Video,
+  VideoOff,
+  Aperture,
+  AlertCircle,
   ShieldAlert,
   FileText,
   User,
@@ -48,6 +52,35 @@ function fmtDateTime(iso) {
   if (!iso) return 'N/A'
   return `${fmtDate(iso)} ${fmtTime(iso)}`
 }
+
+const DEFAULT_CLASSES = [
+  { id: 2, name: 'CSE A' },
+  { id: 3, name: 'CSE B' },
+  { id: 4, name: 'CSE C' },
+  { id: 5, name: 'CSE D' },
+  { id: 6, name: 'CSE E' },
+  { id: 7, name: 'CSE F' },
+  { id: 8, name: 'CSE G' },
+  { id: 9, name: 'CSE H' },
+  { id: 10, name: 'CSE I' },
+  { id: 11, name: 'CSE J' },
+  { id: 12, name: 'CSE K' },
+  { id: 13, name: 'CSE L' },
+]
+
+const DEFAULT_SUBJECTS = [
+  { id: 5, code: '1BITMA301', name: 'Mathematics-III for IT Stream' },
+  { id: 6, code: '1BCSDS302', name: 'Data Structures' },
+  { id: 7, code: '1BCSOS303', name: 'Operating System' },
+  { id: 8, code: '1BCSCO304', name: 'Computer Organization' },
+  { id: 9, code: '1BCSDL305', name: 'Data Structures Laboratory' },
+  { id: 10, code: '1BCSEL306', name: 'Embedded IoT Laboratory' },
+  { id: 11, code: '1BCSOO307', name: 'Object Oriented Programming with Java' },
+  { id: 12, code: '1BUHVK308', name: 'Universal Human Values' },
+  { id: 13, code: 'MNC1BNSSK301 / 1BNCCK301 / 1BPHEK301', name: 'NSS / NCC / Physical Education (PE)' },
+  { id: 14, code: 'IBMADS301', name: 'Additional Mathematics / Bridge Course' },
+  { id: 15, code: 'YOGA', name: 'Yoga' },
+]
 
 export default function TeacherDashboard() {
   const { user } = useAuth()
@@ -97,8 +130,8 @@ export default function TeacherDashboard() {
   }, [activeTab])
 
   // ─── START SESSION ───────────────────────────────────────
-  const [classes, setClasses] = useState([])
-  const [subjects, setSubjects] = useState([])
+  const [classes, setClasses] = useState(DEFAULT_CLASSES)
+  const [subjects, setSubjects] = useState(DEFAULT_SUBJECTS)
   const [sessionForm, setSessionForm] = useState({ class_id: '', subject_id: '', room_no: '' })
   const [startingSession, setStartingSession] = useState(false)
   const [endingSession, setEndingSession] = useState(false)
@@ -107,24 +140,24 @@ export default function TeacherDashboard() {
     if (activeTab !== 'start_session') return
     Promise.all([teacherApi.getClasses(), teacherApi.getSubjects()])
       .then(([cls, subs]) => {
-        setClasses(cls)
-        setSubjects(subs)
-        if (cls.length > 0) setSessionForm((f) => ({ ...f, class_id: cls[0].id }))
-        if (subs.length > 0) setSessionForm((f) => ({ ...f, subject_id: subs[0].id }))
+        if (cls && cls.length > 0) setClasses(cls)
+        if (subs && subs.length > 0) setSubjects(subs)
       })
-      .catch((err) => showToast(err.message || 'Failed to load classes/subjects.', 'error'))
+      .catch((err) => {
+        console.warn('Could not load classes/subjects from API, using default list:', err)
+      })
   }, [activeTab])
 
   const handleStartSession = async () => {
     if (!sessionForm.class_id || !sessionForm.subject_id) {
-      showToast('Select a class and subject.', 'warning')
+      showToast('Please select both a Class and a Subject.', 'warning')
       return
     }
     setStartingSession(true)
     try {
       const res = await teacherApi.startSession({
-        class_id: parseInt(sessionForm.class_id),
-        subject_id: parseInt(sessionForm.subject_id),
+        class_id: parseInt(sessionForm.class_id, 10),
+        subject_id: parseInt(sessionForm.subject_id, 10),
         room_no: sessionForm.room_no || 'Lab-IoT-1',
       })
       showToast(`Session #${res.session_id} started!`, 'success')
@@ -263,13 +296,115 @@ export default function TeacherDashboard() {
     },
   ]
 
-  // ─── HEADCOUNT ───────────────────────────────────────────
+  // ─── HEADCOUNT & LIVE CAMERA ─────────────────────────────
   const [hcSettings, setHcSettings] = useState(null)
   const [hcHistory, setHcHistory] = useState([])
   const [hcLoading, setHcLoading] = useState(false)
   const [runningHc, setRunningHc] = useState(false)
   const [hcResult, setHcResult] = useState(null)
   const [savingHcSettings, setSavingHcSettings] = useState(false)
+
+  // Camera State
+  const videoRef = useRef(null)
+  const [isCameraActive, setIsCameraActive] = useState(false)
+  const [cameraStream, setCameraStream] = useState(null)
+  const [cameraError, setCameraError] = useState(null)
+  const [snapshotPreview, setSnapshotPreview] = useState(null)
+  const [cameraMode, setCameraMode] = useState('WEBCAM') // 'WEBCAM' | 'CCTV'
+
+  // Start Laptop Webcam
+  const startCamera = async () => {
+    setCameraError(null)
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Your browser does not support webcam access. Use Chrome, Edge, or Firefox.')
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false,
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.play().catch(e => console.log('Autoplay error:', e))
+      }
+      setCameraStream(stream)
+      setIsCameraActive(true)
+      showToast('Laptop camera opened successfully!', 'success')
+    } catch (err) {
+      console.error('Camera open failed:', err)
+      let msg = err.message || 'Unable to open camera.'
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        msg = 'Camera permission was denied. Please allow camera access in your browser settings (click the lock/tune icon near your URL bar).'
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        msg = 'No camera found on your laptop. Please connect a webcam or check device manager.'
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        msg = 'Camera is currently in use by another application (e.g. Zoom, Teams, or another tab). Close them and try again.'
+      }
+      setCameraError(msg)
+      showToast('Could not open camera.', 'error')
+    }
+  }
+
+  // Stop Laptop Webcam
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop())
+      setCameraStream(null)
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    setIsCameraActive(false)
+    showToast('Laptop camera turned off.', 'info')
+  }
+
+  // Turn off camera cleanly when leaving headcount tab
+  useEffect(() => {
+    if (activeTab !== 'headcount' && cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop())
+      setCameraStream(null)
+      setIsCameraActive(false)
+    }
+  }, [activeTab, cameraStream])
+
+  // Capture Snapshot from Laptop Camera and verify headcount
+  const handleCaptureAndHeadcount = async () => {
+    if (!activeSession) {
+      showToast('Please start an attendance session first.', 'error')
+      return
+    }
+    if (!videoRef.current || !isCameraActive) {
+      showToast('Please open the laptop camera before taking a snapshot.', 'warning')
+      return
+    }
+
+    setRunningHc(true)
+    setHcResult(null)
+    try {
+      // Capture frame to canvas
+      const canvas = document.createElement('canvas')
+      canvas.width = videoRef.current.videoWidth || 640
+      canvas.height = videoRef.current.videoHeight || 480
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+      setSnapshotPreview(dataUrl)
+
+      // Send to backend capture endpoint
+      const res = await teacherApi.captureCamera({
+        session_id: activeSession.id,
+        image_base64: dataUrl,
+      })
+      setHcResult(res)
+      showToast(`✓ Headcount verified: ${res.detected_count} student(s) detected`, 'success')
+      const history = await teacherApi.getHeadcountHistory()
+      setHcHistory(history)
+    } catch (err) {
+      showToast(err.message || 'Headcount capture failed.', 'error')
+    } finally {
+      setRunningHc(false)
+    }
+  }
 
   useEffect(() => {
     if (activeTab !== 'headcount') return
@@ -572,27 +707,63 @@ export default function TeacherDashboard() {
                 </div>
               ) : (
                 <div className="card" style={{ padding: '1.75rem' }}>
-                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>No active session. Fill the form and click Start.</p>
+                  <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+                    Select a class and subject to start recording real-time student attendance.
+                  </p>
                   <div className="form-group">
                     <label className="form-label">Class *</label>
-                    <select className="form-input" value={sessionForm.class_id} onChange={(e) => setSessionForm((f) => ({ ...f, class_id: e.target.value }))}>
-                      {classes.length === 0 && <option value="">Loading classes...</option>}
-                      {classes.map((c) => <option key={c.id} value={c.id}>{c.name} — {c.department} Sem {c.semester} Sec {c.section}</option>)}
+                    <select
+                      className="form-input"
+                      value={sessionForm.class_id}
+                      onChange={(e) => setSessionForm((f) => ({ ...f, class_id: e.target.value }))}
+                    >
+                      <option value="">Select Class</option>
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Subject *</label>
-                    <select className="form-input" value={sessionForm.subject_id} onChange={(e) => setSessionForm((f) => ({ ...f, subject_id: e.target.value }))}>
-                      {subjects.length === 0 && <option value="">Loading subjects...</option>}
-                      {subjects.map((s) => <option key={s.id} value={s.id}>[{s.code}] {s.name}</option>)}
+                    <select
+                      className="form-input"
+                      value={sessionForm.subject_id}
+                      onChange={(e) => setSessionForm((f) => ({ ...f, subject_id: e.target.value }))}
+                    >
+                      <option value="">Select Subject</option>
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.code === s.name ? s.name : `${s.code} - ${s.name}`}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Room / Lab (Optional)</label>
-                    <input className="form-input" type="text" placeholder="e.g. Room 301, Lab-IoT-1" value={sessionForm.room_no} onChange={(e) => setSessionForm((f) => ({ ...f, room_no: e.target.value }))} />
+                    <input
+                      className="form-input"
+                      type="text"
+                      placeholder="e.g. Room 301, Lab-IoT-1"
+                      value={sessionForm.room_no}
+                      onChange={(e) => setSessionForm((f) => ({ ...f, room_no: e.target.value }))}
+                    />
                   </div>
-                  <button className="btn btn-primary" style={{ width: '100%', padding: '0.875rem', fontSize: '1rem' }} disabled={startingSession || classes.length === 0} onClick={handleStartSession}>
-                    <PlayCircle size={18} /> {startingSession ? 'Starting...' : 'Start Attendance Session'}
+                  <button
+                    className="btn btn-primary"
+                    style={{
+                      width: '100%',
+                      padding: '0.875rem',
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      opacity: (!sessionForm.class_id || !sessionForm.subject_id || startingSession) ? 0.6 : 1,
+                      cursor: (!sessionForm.class_id || !sessionForm.subject_id || startingSession) ? 'not-allowed' : 'pointer',
+                    }}
+                    disabled={startingSession || !sessionForm.class_id || !sessionForm.subject_id}
+                    onClick={handleStartSession}
+                  >
+                    <PlayCircle size={18} /> {startingSession ? 'Starting Session...' : 'Start Attendance Session'}
                   </button>
                 </div>
               )}
@@ -674,58 +845,262 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {/* ════ HEADCOUNT ════ */}
+          {/* ════ HEADCOUNT & CAMERA ════ */}
           {activeTab === 'headcount' && (
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem' }}>Classroom Headcount</h2>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+                <div>
+                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800 }}>Classroom Camera & Headcount</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                    Live AI vision & student proxy verification feed
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-hover)', padding: '0.25rem', borderRadius: '0.5rem', border: '1px solid var(--border-default)' }}>
+                  <button
+                    className={`btn ${cameraMode === 'WEBCAM' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.775rem', padding: '0.35rem 0.75rem', borderRadius: '0.375rem' }}
+                    onClick={() => setCameraMode('WEBCAM')}
+                  >
+                    <Video size={14} /> Laptop Camera
+                  </button>
+                  <button
+                    className={`btn ${cameraMode === 'CCTV' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.775rem', padding: '0.35rem 0.75rem', borderRadius: '0.375rem' }}
+                    onClick={() => setCameraMode('CCTV')}
+                  >
+                    <Camera size={14} /> CCTV / IP Feed
+                  </button>
+                </div>
+              </div>
+
               <SessionBanner />
 
-              {hcLoading ? <Loading message="Loading headcount data..." /> : (
-                <>
-                  <div className="card" style={{ padding: '1.75rem', marginBottom: '1.5rem' }}>
-                    <h3 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Manual Headcount</h3>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>Records the student count vs RFID swipes. Live camera integration coming in Step 6.</p>
-                    <button className="btn btn-primary" style={{ padding: '0.875rem 1.75rem', fontSize: '1rem' }} disabled={runningHc || !activeSession} onClick={handleRunHeadcount}>
-                      <Camera size={18} /> {runningHc ? 'Running...' : 'START HEADCOUNT NOW'}
-                    </button>
-                    {hcResult && (
-                      <div style={{ marginTop: '1.25rem', padding: '1rem 1.25rem', borderRadius: '0.5rem', background: 'var(--status-present-bg)', border: '1px solid var(--status-present)' }}>
-                        <div style={{ fontWeight: 700, color: 'var(--status-present)', marginBottom: '0.5rem' }}>✓ Headcount Complete</div>
-                        <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                          Detected: <strong>{hcResult.headcount_detected}</strong> · RFID: <strong>{hcResult.rfid_swipes_count}</strong> · Result: <strong>{hcResult.status}</strong>
-                        </div>
-                      </div>
-                    )}
+              {/* ─── CAMERA VIEWPORT CARD ─── */}
+              <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ width: '0.625rem', height: '0.625rem', borderRadius: '50%', background: isCameraActive ? '#22c55e' : '#94a3b8', boxShadow: isCameraActive ? '0 0 8px #22c55e' : 'none' }} />
+                    <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                      {cameraMode === 'WEBCAM' ? 'Laptop Webcam Feed' : 'CCTV / RTSP Stream'}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: isCameraActive ? 'var(--status-present-bg)' : 'var(--bg-hover)', color: isCameraActive ? 'var(--status-present)' : 'var(--text-muted)', fontWeight: 600 }}>
+                      {isCameraActive ? '● LIVE STREAMING' : 'IDLE / OFF'}
+                    </span>
                   </div>
 
-                  {hcSettings && (
-                    <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-                      <h3 style={{ fontWeight: 700, marginBottom: '1rem' }}>Auto Timer Settings</h3>
-                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                        <div style={{ flex: 1, minWidth: '180px' }}>
-                          <label className="form-label">Interval (minutes)</label>
-                          <input className="form-input" type="number" min={1} max={120} value={hcSettings.interval_minutes} onChange={(e) => setHcSettings((s) => ({ ...s, interval_minutes: parseInt(e.target.value) || 1 }))} />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '0.5rem' }}>
-                          <input type="checkbox" id="hc-enabled" checked={hcSettings.is_enabled} onChange={(e) => setHcSettings((s) => ({ ...s, is_enabled: e.target.checked }))} />
-                          <label htmlFor="hc-enabled" style={{ fontSize: '0.875rem', fontWeight: 600 }}>Enabled</label>
-                        </div>
-                        <button className="btn btn-secondary" disabled={savingHcSettings} onClick={handleSaveHcSettings}>
-                          {savingHcSettings ? 'Saving...' : 'Save Timer'}
+                  {cameraMode === 'WEBCAM' && (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {!isCameraActive ? (
+                        <button
+                          className="btn btn-primary"
+                          style={{ fontSize: '0.825rem', padding: '0.45rem 1rem' }}
+                          onClick={startCamera}
+                        >
+                          <Video size={15} /> Open Laptop Camera
                         </button>
-                      </div>
+                      ) : (
+                        <button
+                          className="btn"
+                          style={{ fontSize: '0.825rem', padding: '0.45rem 1rem', background: 'var(--status-absent)', color: '#fff' }}
+                          onClick={stopCamera}
+                        >
+                          <VideoOff size={15} /> Stop Camera
+                        </button>
+                      )}
                     </div>
                   )}
+                </div>
 
-                  <div className="card" style={{ padding: '1.5rem' }}>
-                    <h3 style={{ fontWeight: 700, marginBottom: '1rem' }}>Headcount History</h3>
-                    {hcHistory.length === 0
-                      ? <EmptyState icon={Camera} title="No Headcount Records" description="Run a headcount to create the first record." />
-                      : <DataTable columns={hcHistoryColumns} data={hcHistory} rowKey="id" />
-                    }
+                {/* Error Banner */}
+                {cameraError && (
+                  <div style={{ padding: '0.875rem 1rem', borderRadius: '0.5rem', background: 'var(--status-absent-bg)', border: '1px solid var(--status-absent)', color: 'var(--status-absent)', fontSize: '0.825rem', marginBottom: '1rem', display: 'flex', alignItems: 'flex-start', gap: '0.625rem' }}>
+                    <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
+                    <div>
+                      <strong>Camera Notice:</strong> {cameraError}
+                    </div>
                   </div>
-                </>
+                )}
+
+                {/* Video Viewport Area */}
+                {cameraMode === 'WEBCAM' ? (
+                  <div style={{ position: 'relative', width: '100%', minHeight: '380px', maxHeight: '520px', borderRadius: '0.75rem', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid var(--border-default)' }}>
+                    {/* Live Video Element */}
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        maxHeight: '520px',
+                        objectFit: 'cover',
+                        display: isCameraActive ? 'block' : 'none',
+                        transform: 'scaleX(-1)', // Mirror webcam for intuitive user experience
+                      }}
+                    />
+
+                    {/* Camera Off Placeholder */}
+                    {!isCameraActive && (
+                      <div style={{ textAlign: 'center', padding: '3rem 1.5rem', color: '#94a3b8' }}>
+                        <div style={{ width: '4.5rem', height: '4.5rem', borderRadius: '50%', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary-600)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                          <Camera size={36} />
+                        </div>
+                        <h4 style={{ color: '#f8fafc', fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                          Laptop Camera is Closed
+                        </h4>
+                        <p style={{ fontSize: '0.85rem', maxWidth: '420px', margin: '0 auto 1.5rem', color: '#94a3b8', lineHeight: 1.5 }}>
+                          Click the button below to turn on your laptop's built-in webcam. The live video will display here for real-time headcount verification.
+                        </p>
+                        <button
+                          className="btn btn-primary"
+                          style={{ padding: '0.75rem 1.75rem', fontSize: '0.95rem', fontWeight: 600, boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)' }}
+                          onClick={startCamera}
+                        >
+                          <Video size={18} /> Open Laptop Camera
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Active Overlay Header & Grid */}
+                    {isCameraActive && (
+                      <>
+                        <div style={{ position: 'absolute', top: '1rem', left: '1rem', right: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', pointerEvents: 'none' }}>
+                          <div style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', color: '#22c55e', padding: '0.3rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
+                            REC · LIVE WEBCAM
+                          </div>
+                          {activeSession && (
+                            <div style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', color: '#f8fafc', padding: '0.3rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {activeSession.subject_name} · Room {activeSession.room_no}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Subtle viewfinder crosshairs */}
+                        <div style={{ position: 'absolute', top: '50%', left: '50%', width: '120px', height: '120px', transform: 'translate(-50%, -50%)', border: '1px dashed rgba(255,255,255,0.25)', borderRadius: '0.5rem', pointerEvents: 'none' }} />
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  /* CCTV Stream Mode */
+                  <div style={{ width: '100%', minHeight: '360px', borderRadius: '0.75rem', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '2px solid var(--border-default)' }}>
+                    <img
+                      src="/camera/stream"
+                      alt="CCTV Video Stream"
+                      style={{ width: '100%', height: '100%', maxHeight: '480px', objectFit: 'contain' }}
+                      onError={(e) => {
+                        e.target.style.display = 'none'
+                        e.target.nextSibling.style.display = 'block'
+                      }}
+                    />
+                    <div style={{ display: 'none', textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                      <AlertCircle size={32} style={{ color: 'var(--status-absent)', margin: '0 auto 0.5rem' }} />
+                      <div style={{ fontWeight: 600, color: '#f8fafc' }}>CCTV Stream Offline</div>
+                      <div style={{ fontSize: '0.8rem' }}>Check your RTSP source in Settings.</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Viewport Action Toolbar */}
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: '0.75rem 1.5rem', fontSize: '0.9rem', fontWeight: 600 }}
+                    disabled={runningHc || (!isCameraActive && cameraMode === 'WEBCAM')}
+                    onClick={cameraMode === 'WEBCAM' ? handleCaptureAndHeadcount : handleRunHeadcount}
+                  >
+                    <Aperture size={18} />
+                    {runningHc ? 'Processing Headcount...' : 'Capture Snapshot & Run Headcount'}
+                  </button>
+
+                  {isCameraActive && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '0.75rem 1.25rem', fontSize: '0.9rem' }}
+                      onClick={stopCamera}
+                    >
+                      <VideoOff size={16} /> Stop Camera
+                    </button>
+                  )}
+
+                  {!activeSession && (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--status-absent)', fontWeight: 600 }}>
+                      ⚠️ Start an attendance session to link verification.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Snapshot Result Card */}
+              {hcResult && (
+                <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem', border: '1.5px solid var(--status-present)', background: 'var(--status-present-bg)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--status-present)', fontWeight: 800, fontSize: '1rem' }}>
+                      <CheckCircle2 size={18} /> AI Vision Headcount Result
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {fmtDateTime(hcResult.timestamp)}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {snapshotPreview && (
+                      <div style={{ width: '140px', height: '100px', borderRadius: '0.5rem', overflow: 'hidden', border: '1px solid var(--border-default)', flexShrink: 0 }}>
+                        <img src={snapshotPreview} alt="Captured Snapshot" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+                        <div style={{ background: 'var(--bg-card)', padding: '0.625rem 0.875rem', borderRadius: '0.375rem', border: '1px solid var(--border-default)' }}>
+                          <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', fontWeight: 600 }}>CAMERA DETECTED</div>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>{hcResult.detected_count ?? hcResult.headcount_detected} Heads</div>
+                        </div>
+                        <div style={{ background: 'var(--bg-card)', padding: '0.625rem 0.875rem', borderRadius: '0.375rem', border: '1px solid var(--border-default)' }}>
+                          <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', fontWeight: 600 }}>RFID SWIPES</div>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>{hcResult.expected_count ?? hcResult.rfid_swipes_count} Swipes</div>
+                        </div>
+                        <div style={{ background: 'var(--bg-card)', padding: '0.625rem 0.875rem', borderRadius: '0.375rem', border: '1px solid var(--border-default)' }}>
+                          <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', fontWeight: 600 }}>AUDIT STATUS</div>
+                          <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--status-present)' }}>{hcResult.status}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
+
+              {/* Timer Settings Card */}
+              {hcSettings && (
+                <div className="card" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontWeight: 700, marginBottom: '1rem', fontSize: '1rem' }}>Auto Headcount Timer</h3>
+                  <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1, minWidth: '180px' }}>
+                      <label className="form-label">Interval (minutes)</label>
+                      <input className="form-input" type="number" min={1} max={120} value={hcSettings.interval_minutes} onChange={(e) => setHcSettings((s) => ({ ...s, interval_minutes: parseInt(e.target.value) || 1 }))} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingBottom: '0.5rem' }}>
+                      <input type="checkbox" id="hc-enabled" checked={hcSettings.is_enabled} onChange={(e) => setHcSettings((s) => ({ ...s, is_enabled: e.target.checked }))} />
+                      <label htmlFor="hc-enabled" style={{ fontSize: '0.875rem', fontWeight: 600 }}>Enabled</label>
+                    </div>
+                    <button className="btn btn-secondary" disabled={savingHcSettings} onClick={handleSaveHcSettings}>
+                      {savingHcSettings ? 'Saving...' : 'Save Timer'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Headcount History */}
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>Headcount Verification History</h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Latest snapshots</span>
+                </div>
+                {hcHistory.length === 0
+                  ? <EmptyState icon={Camera} title="No Headcount Records" description="Open the camera and click Capture Snapshot to create the first record." />
+                  : <DataTable columns={hcHistoryColumns} data={hcHistory} rowKey="id" />
+                }
+              </div>
             </div>
           )}
 

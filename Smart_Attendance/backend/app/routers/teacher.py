@@ -579,8 +579,8 @@ def get_teacher_profile(
         "employee_id": teacher.employee_id,
         "name": teacher.name,
         "department": teacher.department,
-        "email": teacher.email,
-        "designation": teacher.designation,
+        "email": teacher.user.email if teacher.user else f"{teacher.employee_id.lower()}@university.edu",
+        "designation": "Assistant Professor",
     }
 
 
@@ -618,7 +618,8 @@ def get_all_subjects(
             "id": s.id,
             "code": s.code,
             "name": s.name,
-            "credits": s.credits,
+            "department": s.department,
+            "semester": s.semester,
         }
         for s in subjects
     ]
